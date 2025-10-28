@@ -1,21 +1,22 @@
-import streamlit as st
+import pandas as pd
+from apputil import GroupEstimate
 
-from apputil import *
+# Sample data
+df_raw = pd.DataFrame({
+    "loc_country": ["Guatemala", "Mexico", "Brazil", "Guatemala", "Mexico"],
+    "roast": ["Light", "Medium", "Dark", "Light", "Medium"],
+    "rating": [88, 91, 85, 89, 90]
+})
 
+X = df_raw[["loc_country", "roast"]]
+y = df_raw["rating"]
 
-st.write(
-'''
-# Week 9: [Sridhar Karri]
+print("=== Mean Estimate ===")
+gm = GroupEstimate(estimate="mean")
+gm.fit(X, y)
+X_new = [["Guatemala", "Light"], ["Mexico", "Medium"], ["Canada", "Dark"]]
+print(gm.predict(X_new))   # -> [88.5, 90.5, nan]
 
-...
-''')
-
-# currently set for integer input
-amount = st.number_input("Exercise Input: ", 
-                         value=None, 
-                         step=1, 
-                         format="%d")
-
-if amount is not None:
-    st.write(f"The exercise input was {amount}.")
-
+print("\n=== Mean with Default Category (loc_country) ===")
+gm.fit(X, y, default_category="loc_country")
+print(gm.predict(X_new))   # -> [88.5, 90.5, nan] (fallback handled)
