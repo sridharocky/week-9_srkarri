@@ -1,56 +1,66 @@
-import streamlit as st
-from utils.data_loader import load_data
-from utils.preprocessing import clean_data
-from utils.modeling import load_model
-from utils.visualizations import plot_sentiment_distribution
+import pandas as pd
 
-# Page config
-st.set_page_config(page_title="Coffee Sentiment Analyzer", page_icon="☕", layout="wide")
+class GroupEstimate:
+    def __init__(self, estimate='mean'):
+        if estimate not in ['mean', 'median']:
+            raise ValueError("estimate must be 'mean' or 'median'")
+        self.estimate = estimate
+        self.group_estimates = None
+        self.default_category = None
+        self.default_estimates = None
 
-st.title("☕ Coffee Review Sentiment Analyzer")
-st.markdown("Analyze coffee reviews, visualize sentiment, and explore insights interactively.")
+    def fit(self, X: pd.DataFrame, y, default_category=None):
+        """
+        Fit the model to X (categorical DataFrame) and y (continuous values)
+        Optionally, provide default_category for fallback estimates
+        """
+        df = X.copy()
+        df['_y'] = y
+        self.default_category = default_category
 
-# --------------------------
-# Load Data
-# --------------------------
-st.subheader("📊 Load Data")
+        # Group by all columns in X
+        self.group_estimates = df.groupby(list(X.columns), observed=True)['_y']
+        if self.estimate == 'mean':
+            self.group_estimates = self.group_estimates.mean()
+        else:
+            self.group_estimates = self.group_estimates.median()
 
-# Ensure you have the secret 'public_gsheet_url' set in Streamlit secrets
-try:
-    sheet_url = st.secrets["public_gsheet_url"]
-except KeyError:
-    st.error("Missing 'public_gsheet_url' in Streamlit secrets. Please add it to run the app.")
-    st.stop()
+        # Group by default category for fallback
+        if default_category:
+            self.default_estimates = df.groupby(default_category, observed=True)['_y']
+            if self.estimate == 'mean':
+                self.default_estimates = self.default_estimates.mean()
+            else:
+                self.default_estimates = self.default_estimates.median()
 
-df = load_data(sheet_url)
-if df.empty:
-    st.warning("No data found in the Google Sheet.")
-    st.stop()
+    def predict(self, X_):
+        """
+        Predict estimates for a new set of observations X_
+        X_ can be a list of lists or a DataFrame with columns matching the original X
+        """
+        df_ = pd.DataFrame(X_, columns=self.group_estimates.index.names)
+        results = []
+        missing_count = 0
 
-df = clean_data(df)
-st.dataframe(df.head())
+        for _, row in df_.iterrows():
+            key = tuple(row)
+            if key in self.group_estimates:
+                results.append(self.group_estimates[key])
+            elif self.default_category and row[self.default_category] in self.default_estimates:
+                results.append(self.default_estimates[row[self.default_category]])
+            else:
+                results.append(float('nan'))
+                missing_count += 1
 
-# --------------------------
-# Load Model
-# --------------------------
-model = load_model()
+        if missing_count > 0:
+            print(f"{missing_count} observation(s) belong to missing group(s).")
 
-# --------------------------
-# Sentiment Visualization
-# --------------------------
-st.subheader("📈 Sentiment Visualization")
-if st.button("Show Sentiment Distribution", key="sentiment_dist"):
-    plot_sentiment_distribution(df)
+        return results
 
-# --------------------------
-# Predict Example
-# --------------------------
-st.subheader("🔍 Predict Example (Optional)")
-if {'feature1', 'feature2'}.issubset(df.columns):
-    feature1 = st.number_input("Feature 1")
-    feature2 = st.number_input("Feature 2")
-    if st.button("Predict Sentiment", key="predict_sentiment"):
-        pred = model.predict([[feature1, feature2]])[0]
-        st.success(f"Predicted Sentiment: {pred}")
-else:
-    st.info("Add 'feature1' and 'feature2' to your dataset to enable predictions.")
+# Helper to maintain compatibility with app.py
+def load_model():
+    """
+    Returns a placeholder GroupEstimate model.
+    You can later fit it with actual data from your Streamlit app.
+    """
+    return GroupEstimate(estimate='mean')
