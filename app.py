@@ -1,66 +1,58 @@
+import streamlit as st
 import pandas as pd
+from utils.data_loader import load_data
+from utils.preprocessing import clean_data
+from utils.modeling import GroupEstimate  # updated to use your custom model
+from utils.visualizations import plot_sentiment_distribution
 
-class GroupEstimate:
-    def __init__(self, estimate='mean'):
-        if estimate not in ['mean', 'median']:
-            raise ValueError("estimate must be 'mean' or 'median'")
-        self.estimate = estimate
-        self.group_estimates = None
-        self.default_category = None
-        self.default_estimates = None
+st.set_page_config(page_title="Coffee Sentiment Analyzer", page_icon="☕", layout="wide")
 
-    def fit(self, X: pd.DataFrame, y, default_category=None):
-        """
-        Fit the model to X (categorical DataFrame) and y (continuous values)
-        Optionally, provide default_category for fallback estimates
-        """
-        df = X.copy()
-        df['_y'] = y
-        self.default_category = default_category
+st.title("☕ Coffee Review Sentiment Analyzer")
+st.markdown("Analyze coffee reviews, visualize sentiment, and explore insights interactively.")
 
-        # Group by all columns in X
-        self.group_estimates = df.groupby(list(X.columns), observed=True)['_y']
-        if self.estimate == 'mean':
-            self.group_estimates = self.group_estimates.mean()
-        else:
-            self.group_estimates = self.group_estimates.median()
+st.subheader("📊 Load Data")
 
-        # Group by default category for fallback
-        if default_category:
-            self.default_estimates = df.groupby(default_category, observed=True)['_y']
-            if self.estimate == 'mean':
-                self.default_estimates = self.default_estimates.mean()
-            else:
-                self.default_estimates = self.default_estimates.median()
+# Use a default dataset if secrets are missing
+try:
+    sheet_url = st.secrets["public_gsheet_url"]
+    df = load_data(sheet_url)
+except KeyError:
+    st.warning("No Google Sheet URL found in secrets. Using example dataset.")
+    df = pd.DataFrame({
+        "loc_country": ["Guatemala", "Mexico", "Mexico", "Guatemala"],
+        "roast": ["Light", "Medium", "Dark", "Light"],
+        "rating": [88, 91, 85, 90]
+    })
 
-    def predict(self, X_):
-        """
-        Predict estimates for a new set of observations X_
-        X_ can be a list of lists or a DataFrame with columns matching the original X
-        """
-        df_ = pd.DataFrame(X_, columns=self.group_estimates.index.names)
-        results = []
-        missing_count = 0
+if df.empty:
+    st.stop()
 
-        for _, row in df_.iterrows():
-            key = tuple(row)
-            if key in self.group_estimates:
-                results.append(self.group_estimates[key])
-            elif self.default_category and row[self.default_category] in self.default_estimates:
-                results.append(self.default_estimates[row[self.default_category]])
-            else:
-                results.append(float('nan'))
-                missing_count += 1
+# Clean data
+df = clean_data(df)
+st.dataframe(df.head())
 
-        if missing_count > 0:
-            print(f"{missing_count} observation(s) belong to missing group(s).")
+# Fit GroupEstimate model
+if {"loc_country", "roast", "rating"}.issubset(df.columns):
+    X = df[["loc_country", "roast"]]
+    y = df["rating"]
+    model = GroupEstimate(estimate="mean")
+    model.fit(X, y, default_category="loc_country")
+else:
+    st.error("Dataset must contain 'loc_country', 'roast', and 'rating' for modeling.")
+    st.stop()
 
-        return results
+# Sentiment visualization
+st.subheader("📈 Sentiment Visualization")
+if st.button("Show Sentiment Distribution"):
+    plot_sentiment_distribution(df)
 
-# Helper to maintain compatibility with app.py
-def load_model():
-    """
-    Returns a placeholder GroupEstimate model.
-    You can later fit it with actual data from your Streamlit app.
-    """
-    return GroupEstimate(estimate='mean')
+# Predict example
+st.subheader("🔍 Predict Example (Optional)")
+if {"loc_country", "roast"}.issubset(df.columns):
+    feature1 = st.text_input("Country", value="Guatemala")
+    feature2 = st.text_input("Roast", value="Light")
+    if st.button("Predict Rating"):
+        pred = model.predict([[feature1, feature2]])[0]
+        st.success(f"Predicted Rating: {pred}")
+else:
+    st.info("Add 'loc_country' and 'roast' columns to your dataset to enable predictions.")
