@@ -1,4 +1,6 @@
 import pandas as pd
+import pickle
+import os
 
 class GroupEstimate:
     def __init__(self, estimate='mean'):
@@ -45,3 +47,11 @@ class GroupEstimate:
             print(f"{missing_count} observation(s) belong to missing group(s).")
 
         return results
+
+# Utility function to load pickled model
+def load_model(model_path="model/group_estimate.pkl"):
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model file not found at {model_path}")
+    with open(model_path, "rb") as f:
+        model = pickle.load(f)
+    return model
