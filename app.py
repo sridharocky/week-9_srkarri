@@ -43,8 +43,9 @@ else:
 
 # Sentiment visualization
 st.subheader("📈 Sentiment Visualization")
-if st.button("Show Sentiment Distribution"):
-    plot_sentiment_distribution(df)
+
+# Show plot directly
+plot_sentiment_distribution(df)
 
 # Predict example
 st.subheader("🔍 Predict Example (Optional)")
