@@ -1,64 +1,65 @@
 import pandas as pd
-from typing import Optional, Union, List
 
 class GroupEstimate:
-    def __init__(self, estimate: str = 'mean'):
+    def __init__(self, estimate='mean'):
         if estimate not in ['mean', 'median']:
             raise ValueError("estimate must be 'mean' or 'median'")
         self.estimate = estimate
-        self.group_estimates: Optional[pd.Series] = None
-        self.default_category: Optional[str] = None
-        self.default_estimates: Optional[pd.Series] = None
+        self.group_estimates = None
+        self.default_category = None
+        self.default_estimates = None
 
-    def fit(self, X: pd.DataFrame, y: Union[List, pd.Series], default_category: Optional[str] = None):
+    def fit(self, X: pd.DataFrame, y, default_category=None):
         """
         Fit the GroupEstimate model.
+
         Parameters:
-        - X: pd.DataFrame of categorical features
-        - y: 1D array or pd.Series of continuous target values
-        - default_category: Optional column name for fallback estimates
+        - X: pandas DataFrame of categorical columns
+        - y: array-like of continuous values
+        - default_category: optional column name to use for fallback estimates
         """
-        if len(X) != len(y):
-            raise ValueError("X and y must have the same length")
         df = X.copy()
         df['_y'] = y
+
         self.default_category = default_category
 
-        # Group by all columns and compute estimate
-        grouped = df.groupby(list(X.columns), observed=True)['_y']
-        self.group_estimates = grouped.mean() if self.estimate == 'mean' else grouped.median()
+        # Compute main group estimates
+        self.group_estimates = df.groupby(list(X.columns), observed=True)['_y']
+        if self.estimate == 'mean':
+            self.group_estimates = self.group_estimates.mean()
+        else:
+            self.group_estimates = self.group_estimates.median()
 
-        # If a default category is provided, compute fallback estimates
-        if default_category and default_category in X.columns:
-            default_grouped = df.groupby(default_category, observed=True)['_y']
-            self.default_estimates = default_grouped.mean() if self.estimate == 'mean' else default_grouped.median()
+        # Compute default estimates if fallback category provided
+        if default_category:
+            self.default_estimates = df.groupby(default_category, observed=True)['_y']
+            if self.estimate == 'mean':
+                self.default_estimates = self.default_estimates.mean()
+            else:
+                self.default_estimates = self.default_estimates.median()
 
-    def predict(self, X_: Union[List[List], pd.DataFrame]) -> List[float]:
+    def predict(self, X_):
         """
         Predict estimates for new observations.
-        Parameters:
-        - X_: List of lists or DataFrame of categorical features
-        Returns:
-        - List of estimated y values
-        """
-        # Ensure X_ is a DataFrame with correct columns
-        if isinstance(X_, list):
-            df_ = pd.DataFrame(X_, columns=self.group_estimates.index.names)
-        else:
-            df_ = X_.copy()
-            df_.columns = self.group_estimates.index.names
 
+        Parameters:
+        - X_: array-like or DataFrame of new observations
+        Returns:
+        - List of predicted values (mean/median) or NaN if missing
+        """
+        df_ = pd.DataFrame(X_, columns=self.group_estimates.index.names)
         results = []
         missing_count = 0
 
         for _, row in df_.iterrows():
             key = tuple(row)
-            # Exact match for group
+            # Case 1: Exact group match
             if key in self.group_estimates:
                 results.append(self.group_estimates[key])
-            # Fallback to default category if defined
+            # Case 2: Fallback using default_category
             elif self.default_category and row[self.default_category] in self.default_estimates:
                 results.append(self.default_estimates[row[self.default_category]])
+            # Case 3: Missing group
             else:
                 results.append(float('nan'))
                 missing_count += 1
