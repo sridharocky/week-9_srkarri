@@ -1,22 +1,25 @@
+import streamlit as st
 import pandas as pd
-from apputil import GroupEstimate
+import pickle
+from utils.data_loader import load_data
+from utils.preprocessing import clean_data
 
-# Sample data
-df_raw = pd.DataFrame({
-    "loc_country": ["Guatemala", "Mexico", "Brazil", "Guatemala", "Mexico"],
-    "roast": ["Light", "Medium", "Dark", "Light", "Medium"],
-    "rating": [88, 91, 85, 89, 90]
-})
+st.title("☕ Coffee Review Estimator")
 
-X = df_raw[["loc_country", "roast"]]
-y = df_raw["rating"]
+# Load raw data
+sheet_url = st.secrets["public_gsheet_url"]
+df_raw = load_data(sheet_url)
+df_clean = clean_data(df_raw)
+st.dataframe(df_clean.head())
 
-print("=== Mean Estimate ===")
-gm = GroupEstimate(estimate="mean")
-gm.fit(X, y)
-X_new = [["Guatemala", "Light"], ["Mexico", "Medium"], ["Canada", "Dark"]]
-print(gm.predict(X_new))   # -> [88.5, 90.5, nan]
+# Load model
+with open('model/group_estimate.pkl', 'rb') as f:
+    gm = pickle.load(f)
 
-print("\n=== Mean with Default Category (loc_country) ===")
-gm.fit(X, y, default_category="loc_country")
-print(gm.predict(X_new))   # -> [88.5, 90.5, nan] (fallback handled)
+st.subheader("Predict Coffee Rating")
+country = st.selectbox("Country", options=df_clean['loc_country'].unique())
+roast = st.selectbox("Roast Type", options=df_clean['roast'].unique())
+
+if st.button("Predict"):
+    prediction = gm.predict([[country, roast]])
+    st.write(f"Predicted Rating: {prediction[0]}")
