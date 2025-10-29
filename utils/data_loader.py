@@ -3,9 +3,13 @@ import streamlit as st
 
 @st.cache_data
 def load_data(sheet_url: str) -> pd.DataFrame:
+    """
+    Load data from a Google Sheets CSV URL.
+    Caches the result to avoid reloading on every Streamlit rerun.
+    """
     try:
         df = pd.read_csv(sheet_url)
         return df
     except Exception as e:
-        st.error(f"❌ Error loading data: {e}")
+        st.error(f"Error loading data: {e}")
         return pd.DataFrame()
